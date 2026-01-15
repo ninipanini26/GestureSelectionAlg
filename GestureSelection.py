@@ -20,7 +20,7 @@ def load_gesture_data(filepath: str) -> pd.DataFrame:
         print(f"Error loading file: {e}")
         sys.exit(1)
 
-def compute_coverage(df: pd.DataFrame, n_bins: int = 5) -> float:
+def compute_coverage(df, n_bins= 5):
     """
     Compute the coverage of gestures in the VAD (Valence-Arousal-Dominance) space.
     
@@ -30,30 +30,33 @@ def compute_coverage(df: pd.DataFrame, n_bins: int = 5) -> float:
     Args:
         df: DataFrame with valence, arousal, dominance columns
         n_bins: Number of bins to divide each dimension into
+            use "cut" functions
+        For each cut (need to put the cuts in own column)
     
     Returns:
         Coverage score (0-1), where 1 means complete coverage
     """
     # Normalize values to 0-1 range if not already
-    vad_data = df[['valence', 'arousal', 'dominance']].copy()
+    #vad_data = df[['valence', 'arousal', 'dominance']].copy()
     
-    for col in vad_data.columns:
-        min_val = vad_data[col].min()
-        max_val = vad_data[col].max()
-        if max_val > min_val:
-            vad_data[col] = (vad_data[col] - min_val) / (max_val - min_val)
+    labs = range (n_bins)
     
-    # Discretize into bins
-    binned_data = (vad_data * (n_bins - 0.001)).astype(int)
+    df['bin_v'] = pd.cut(df['valence'], bins=n_bins, labels=labs)
+    df['bin_a'] = pd.cut(df['arousal'], bins=n_bins, labels=labs)
+    df['bin_d'] = pd.cut(df['dominance'], bins=n_bins, labels=labs)
     
-    # Count unique cells occupied in 3D space
-    unique_cells = binned_data.drop_duplicates().shape[0]
-    total_cells = n_bins ** 3
+    def combine(v, a, d):
+        return f'{v}, {a}, {d}'
     
-    coverage = unique_cells / total_cells
+    df['combine']=df.apply(lambda x: combine(x['bin_v'], x["bin_a"], x['bin_d']), axis=1)
+    
+    coverage = len(df['combine'].unique())/len(df)
     
     return coverage
+    
 
+
+#FINISH THIS
 def compute_agreement(df: pd.DataFrame, threshold: float = 0.2) -> pd.DataFrame:
     """
     Compute agreement scores for gestures based on clustering in VAD space.
@@ -68,34 +71,8 @@ def compute_agreement(df: pd.DataFrame, threshold: float = 0.2) -> pd.DataFrame:
     Returns:
         DataFrame with agreement scores for each gesture
     """
-    vad_cols = ['valence', 'arousal', 'dominance']
-    vad_data = df[vad_cols].values
     
-    # Normalize the data
-    mean = vad_data.mean(axis=0)
-    std = vad_data.std(axis=0)
-    std[std == 0] = 1  # Avoid division by zero
-    vad_normalized = (vad_data - mean) / std
     
-    # Compute pairwise Euclidean distances
-    n_gestures = len(df)
-    distances = np.zeros((n_gestures, n_gestures))
-    
-    for i in range(n_gestures):
-        for j in range(n_gestures):
-            distances[i, j] = np.linalg.norm(vad_normalized[i] - vad_normalized[j])
-    
-    # Compute agreement: proportion of gestures within threshold distance
-    agreement_scores = []
-    for i in range(n_gestures):
-        similar_gestures = np.sum(distances[i] <= threshold) - 1  # Exclude self
-        agreement = similar_gestures / (n_gestures - 1) if n_gestures > 1 else 0
-        agreement_scores.append(agreement)
-    
-    result_df = df.copy()
-    result_df['agreement_score'] = agreement_scores
-    
-    return result_df
 
 def rank_gestures(df: pd.DataFrame, coverage: float) -> pd.DataFrame:
     """
